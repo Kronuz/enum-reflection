@@ -15,12 +15,12 @@ include(FetchContent)
 FetchContent_Declare(
   perfect_hash
   GIT_REPOSITORY https://github.com/Kronuz/perfect-hash.git
-  GIT_TAG        660c416338cdba45c7110053b6cf8258979aecc8
+  GIT_TAG        main
 )
 FetchContent_Declare(
   hashes
   GIT_REPOSITORY https://github.com/Kronuz/hashes.git
-  GIT_TAG        99b46027325de6f131f6f9f0ae9c4d3552c0043b
+  GIT_TAG        main
 )
 FetchContent_MakeAvailable(perfect_hash hashes)
 
