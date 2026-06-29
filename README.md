@@ -111,6 +111,25 @@ unknown-name case (throws), and a full round-trip — most of it as `static_asse
 so a regression is a compile error. It prints `all enum-reflection tests passed`
 and exits 0.
 
+## Examples
+
+[`examples/demo.cc`](examples/demo.cc) is a runnable tour. A top-level CMake build
+produces it next to the test:
+
+```sh
+cmake -B build && cmake --build build && ./build/enum_reflection_demo
+```
+
+It defines a `Color` enum class and an HTTP-status-shaped `Status` (explicit,
+gap-y values), then maps members to their source names with `enum_name`, resolves
+names back to typed members with `enum_type` (including off a runtime
+`string_view`), and walks every enumerator through the reflected
+`detail_<Enum>::values[]` table without naming a member. It then shows the
+mapping is `constexpr` (a handful of `static_assert`s the compiler already
+proved), round-trips both directions to show the conversion is lossless, and
+ends on the unmatched cases: `enum_name` of an undefined value returns `""`, and
+`enum_type` of an unknown name throws `std::out_of_range`.
+
 ## Provenance
 
 Extracted from [Xapiand](https://github.com/Kronuz/Xapiand). `enum.h` is verbatim:

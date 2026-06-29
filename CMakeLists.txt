@@ -45,4 +45,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   add_executable(enum_reflection_test test/test.cc)
   target_link_libraries(enum_reflection_test PRIVATE enum_reflection)
   add_test(NAME enum_reflection COMMAND enum_reflection_test)
+
+  # A runnable tour of the library (not a test): build & run ./build/enum_reflection_demo
+  add_executable(enum_reflection_demo examples/demo.cc)
+  target_link_libraries(enum_reflection_demo PRIVATE enum_reflection)
 endif()
