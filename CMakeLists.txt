@@ -13,16 +13,16 @@ include(FetchContent)
 # static-string + char-classify, so the whole stack comes from these two
 # declarations.
 FetchContent_Declare(
-  perfect_hash
-  GIT_REPOSITORY https://github.com/Kronuz/perfect-hash.git
-  GIT_TAG        main
+  constexpr_phf
+  GIT_REPOSITORY https://github.com/Kronuz/constexpr-phf.git
+  GIT_TAG        master
 )
 FetchContent_Declare(
   hashes
   GIT_REPOSITORY https://github.com/Kronuz/hashes.git
   GIT_TAG        main
 )
-FetchContent_MakeAvailable(perfect_hash hashes)
+FetchContent_MakeAvailable(constexpr_phf hashes)
 
 # --- Library target ---
 # enum-reflection is header-only: one header (enum.h) of preprocessor machinery
@@ -33,7 +33,7 @@ FetchContent_MakeAvailable(perfect_hash hashes)
 add_library(enum_reflection INTERFACE)
 target_include_directories(enum_reflection INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_features(enum_reflection INTERFACE cxx_std_20)
-target_link_libraries(enum_reflection INTERFACE perfect_hash hashes::hashes)
+target_link_libraries(enum_reflection INTERFACE constexpr_phf hashes::hashes)
 # Alias so consumers can link `enum_reflection::enum_reflection` whether they add
 # this via add_subdirectory or FetchContent.
 add_library(enum_reflection::enum_reflection ALIAS enum_reflection)
