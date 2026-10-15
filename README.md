@@ -1,5 +1,7 @@
 # enum-reflection
 
+[![CI](https://github.com/Kronuz/enum-reflection/actions/workflows/ci.yml/badge.svg)](https://github.com/Kronuz/enum-reflection/actions/workflows/ci.yml)
+
 ![constexpr](https://img.shields.io/badge/constexpr-compile--time-blue)
 
 A small, header-only **reflective enum** library for C++20, extracted from
