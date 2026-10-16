@@ -11,7 +11,7 @@ One header, header-only, with two FetchContent'd dependencies (and two more
 underneath them):
 
 ```
-  phf.hh        compile-time minimal perfect hash   (dep: perfect-hash)
+  phf.hh        compile-time minimal perfect hash   (dep: constexpr-phf)
   hashes.hh     hhl/hmix/fhhl/fhmix hashing macros   (dep: hashes
                   -> static-string, char-classify)
       ▲ (both included by)
@@ -20,7 +20,7 @@ underneath them):
 
 `enum.h` includes `phf.hh` (the perfect hash that the generated lookups switch
 on) and `hashes.hh` (the `hhl`/`hmix`/`fhhl`/`fhmix` macros that feed names and
-values into that hash). Both come in through `FetchContent` at pinned SHAs;
+values into that hash). Both come in through `FetchContent` at their branch tips;
 `hashes` brings `static-string` and `char-classify` with it. Nothing else enters
 except the C++ standard library (`<string_view>`, and `std::out_of_range` via
 `<stdexcept>`, which arrives transitively through `phf.hh`).
@@ -67,7 +67,7 @@ The whole point is that the mapping is `constexpr`: `enum_name(Color::Red)` and
 table-building and no per-call string scan. A perfect hash is what makes that
 affordable — the alternative, a linear scan or a runtime `std::map`, would be
 neither `constexpr`-friendly nor branch-light. The two dependencies exist only
-because the generated code reaches for them: `perfect-hash` is the hash itself,
+because the generated code reaches for them: `constexpr-phf` is the hash itself,
 and `hashes` provides the hashing macros (`hmix` for the integer values, the
 case-insensitive `hhl` for the names) plus the `find()`-composed `fhmix`/`fhhl`
 that the `make_phf` initializers and `case` labels are written in terms of. Both

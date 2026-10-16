@@ -1,0 +1,19 @@
+# enum-reflection: one macro, a real enum class and constexpr lookups both ways.
+# Render: d2 --layout elk --sketch --theme 302 docs/enum-reflection.d2 docs/enum-reflection.svg
+direction: right
+
+macro: ENUM_CLASS {
+  label: "ENUM_CLASS(Color, uint8_t,\n  Red, Green, Blue)"
+}
+enum: enum class Color {
+  label: "enum class Color : uint8_t"
+}
+name: enum_name {
+  label: "enum_name(Color::Green)\n→ \"Green\""
+}
+type: enum_type {
+  label: "enum_type<Color>(\"Blue\")\n→ Color::Blue"
+}
+macro -> enum
+macro -> name: "value → name\nperfect hash"
+macro -> type: "name → value\nperfect hash"

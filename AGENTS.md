@@ -10,18 +10,20 @@ easy to fall into.
 ```
 enum.h                       ENUM_CLASS / ENUM macros + constexpr enum_name / enum_type / enum_find. Header.
 test/test.cc                 Runnable smoke test: enum->string, string->enum, perfect-hash dispatch, unknown name, round-trip.
-CMakeLists.txt               INTERFACE library `enum_reflection` (+ alias enum_reflection::enum_reflection); FetchContents perfect-hash + hashes; CTest test `enum_reflection`.
+CMakeLists.txt               INTERFACE library `enum_reflection` (+ alias enum_reflection::enum_reflection); FetchContents constexpr-phf + hashes; CTest test `enum_reflection`.
 LICENSE                      MIT, Copyright (c) 2015-2019 Dubalu LLC (+ Anton Bachin, in the header).
-README.md                    What it is, install, usage, the API.
+README.md                    What it is, install, quick start.
+docs/API.md                  ENUM_CLASS, ENUM, and the accessors.
+docs/enum-reflection.d2      The README diagram's source (docs/enum-reflection.svg is rendered from it).
 ARCHITECTURE.md              How ENUM_CLASS works: the variadic map, the two reflected tables, the two perfect hashes.
 ```
 
 `enum.h` is the only header here; everything else is header-only too (only the
 test is compiled). The two dependencies —
-[`perfect-hash`](https://github.com/Kronuz/perfect-hash) (the compile-time
+[`constexpr-phf`](https://github.com/Kronuz/constexpr-phf) (the compile-time
 perfect hash) and [`hashes`](https://github.com/Kronuz/hashes) (the
 `hhl`/`hmix`/`fhhl`/`fhmix` hashing macros) — are pulled in by `FetchContent` at
-pinned SHAs and provide `phf.hh` and `hashes.hh` on the include path. `hashes`
+their branch tips and provide `phf.hh` and `hashes.hh` on the include path. `hashes`
 transitively brings `static-string` and `char-classify`.
 
 ## Build and run the test
@@ -30,11 +32,10 @@ transitively brings `static-string` and `char-classify`.
 cmake -B build && cmake --build build && ctest --test-dir build
 ```
 
-The first `cmake -B build` clones `perfect-hash` and `hashes` (and, transitively,
-`static-string` and `char-classify`) from GitHub at the pinned SHAs in
-`CMakeLists.txt`. Expected output ends with `all enum-reflection tests passed`,
+The first `cmake -B build` clones `constexpr-phf` and `hashes` (and, transitively,
+`static-string` and `char-classify`) from GitHub at their branch tips. Expected output ends with `all enum-reflection tests passed`,
 exit 0. The CMake `enum_reflection` target is an `INTERFACE` library that requests
-`cxx_std_20`, links `perfect_hash` and `hashes::hashes`, and exposes the source
+`cxx_std_20`, links `constexpr_phf` and `hashes::hashes`, and exposes the source
 dir as an include. The test target is `enum_reflection_test`; the registered
 CTest name is `enum_reflection`.
 
@@ -42,7 +43,7 @@ To build against local checkouts of the deps instead of cloning, pass:
 
 ```sh
 cmake -B build \
-  -DFETCHCONTENT_SOURCE_DIR_PERFECT_HASH=/path/to/perfect-hash \
+  -DFETCHCONTENT_SOURCE_DIR_CONSTEXPR_PHF=/path/to/constexpr-phf \
   -DFETCHCONTENT_SOURCE_DIR_HASHES=/path/to/hashes
 ```
 
@@ -105,7 +106,7 @@ cmake -B build \
   zero-args extension. Don't remove it.
 - **A consumer that also FetchContents the deps should declare them first.**
   `FetchContent` uses the first declaration of each name, so if Xapiand (or any
-  consumer) declares `perfect_hash` / `hashes` (or `static_string` /
+  consumer) declares `constexpr_phf` / `hashes` (or `static_string` /
   `char_classify`) before pulling `enum_reflection`, those win and dedup — make
   sure the SHAs are compatible.
 
