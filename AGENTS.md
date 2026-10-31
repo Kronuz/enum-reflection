@@ -19,10 +19,10 @@ ARCHITECTURE.md              How ENUM_CLASS works: the variadic map, the two ref
 ```
 
 `enum.h` is the only header here; everything else is header-only too (only the
-test is compiled). The two dependencies —
+test is compiled). The two dependencies,
 [`constexpr-phf`](https://github.com/Kronuz/constexpr-phf) (the compile-time
 perfect hash) and [`hashes`](https://github.com/Kronuz/hashes) (the
-`hhl`/`hmix`/`fhhl`/`fhmix` hashing macros) — are pulled in by `FetchContent` at
+`hhl`/`hmix`/`fhhl`/`fhmix` hashing macros), are pulled in by `FetchContent` at
 their branch tips and provide `phf.hh` and `hashes.hh` on the include path. `hashes`
 transitively brings `static-string` and `char-classify`.
 
@@ -53,14 +53,13 @@ cmake -B build \
   `constexpr`; the value/name perfect hashes and `string_view` comparisons assume
   a C++20 baseline.)
 - **The only includes are the C++ standard library and the two deps.** `enum.h`
-  does `#include <string_view>`, `#include "phf.hh"`, and `#include "hashes.hh"`;
-  the latter two resolve via the FetchContent'd libraries. Do not add Xapiand
-  headers (no `THROW`, MsgPack, `strings::`, log macros, `config.h`) back — there
-  were none to begin with.
+  includes `<optional>`, `<stdexcept>`, `<string_view>`, `"phf.hh"`, and
+  `"hashes.hh"`; the last two resolve via the FetchContent'd libraries. Do not add
+  Xapiand headers (`THROW`, MsgPack, `strings::`, log macros, `config.h`).
 - **Filename is stable.** The header keeps its original Xapiand name (`enum.h`) so
   a consumer that already `#include`s it just needs this repo on the include path.
   Don't rename it. The dep headers also keep their original filenames
-  (`phf.hh`, `hashes.hh`) for the same reason — don't rename them in the
+  (`phf.hh`, `hashes.hh`) for the same reason; don't rename them in the
   `#include` lines.
 - Tabs for indentation, double quotes in code, no em dashes in prose.
 
@@ -73,15 +72,13 @@ cmake -B build \
   both and links their targets so the headers are on the include path. If you bump
   a dep SHA, keep both the `FetchContent_Declare` and the `target_link_libraries`
   line.
-- **`std::out_of_range` arrives transitively.** `enum_type`'s `default` branch
-  throws `std::out_of_range`, but `enum.h` does not `#include <stdexcept>` — it
-  rides in through `phf.hh`. The test includes `<stdexcept>` itself so it never
-  depends on that transitively. If you ever drop the `phf.hh` include, add
-  `<stdexcept>` to `enum.h`.
+- **`enum_type` wraps `enum_try_type`.** The name switch is generated once, in
+  `enum_try_type`, whose `default` returns `std::nullopt`; `enum_type` throws
+  `std::out_of_range` on that `std::nullopt`. Keep one switch per enum.
 - **Both directions are independent perfect hashes.** `enum_name` keys on a hash
   of the underlying *value* (`hmix`), `enum_type` on a hash of the *name* (`hhl`,
   case-insensitive FNV-1a). Don't collapse them or assume a slot from one is valid
-  in the other — the test checks each direction's slots are distinct on their own.
+  in the other; the test checks each direction's slots are distinct on their own.
 - **The value dispatch keys on the value, not the index.** Members may carry
   explicit, sparse initializers (`Ok = 200`). `enum_name` must map by underlying
   value; the test covers a non-contiguous, non-zero-based enum for exactly this.
@@ -96,9 +93,9 @@ cmake -B build \
 
 ## Traps
 
-- **`enum_name` of an unknown value returns `""`, but `enum_type` of an unknown
-  name throws.** The two `default` branches differ on purpose — don't "normalize"
-  them. The test pins both behaviors.
+- **`enum_name` of an unknown value returns `""`; `enum_type` of an unknown name
+  throws, and `enum_try_type` returns `std::nullopt`.** The `default` branches differ
+  on purpose; don't "normalize" them. The test pins each behavior.
 - **The member-count ceiling is 999.** The `_ENUM_M*` / `ENUM_COUNT` chain tops
   out at 999 members. That is the upstream limit; an enum past it won't expand.
 - **The `-Wgnu-zero-variadic-macro-arguments` pragma is load-bearing.** `enum.h`
@@ -107,16 +104,16 @@ cmake -B build \
 - **A consumer that also FetchContents the deps should declare them first.**
   `FetchContent` uses the first declaration of each name, so if Xapiand (or any
   consumer) declares `constexpr_phf` / `hashes` (or `static_string` /
-  `char_classify`) before pulling `enum_reflection`, those win and dedup — make
+  `char_classify`) before pulling `enum_reflection`, those win and dedup; make
   sure the SHAs are compatible.
 
 ## Standalone vs. Xapiand
 
 This is a standalone extraction from
-[Xapiand](https://github.com/Kronuz/Xapiand). The delta from the original is pure
-wiring: `enum.h` is byte-for-byte the Xapiand header. Its `#include "phf.hh"` and
-`#include "hashes.hh"` now resolve to the two sibling libraries (FetchContent'd)
-instead of Xapiand's in-tree headers. No macro or accessor logic changed.
+[Xapiand](https://github.com/Kronuz/Xapiand). `enum.h` differs from the Xapiand
+header in two ways: its `#include "phf.hh"` and `#include "hashes.hh"` resolve to
+the two sibling libraries (FetchContent'd) instead of Xapiand's in-tree headers, and
+it adds `enum_try_type`, with `enum_type` defined in terms of it.
 
-Keep extraction hygiene separate from any future behavior changes so they can be
+Keep extraction wiring and behavior changes in separate commits so each can be
 reconciled with upstream.

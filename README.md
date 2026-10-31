@@ -61,8 +61,8 @@ static_assert(enum_type<Status>("Teapot") == Status::Teapot);
 int main() {}
 ```
 
-An unknown name makes `enum_type` throw `std::out_of_range`; an undefined value
-gives `enum_name` an empty string. [`examples/demo.cc`](examples/demo.cc) walks
+An unknown name makes `enum_type` throw `std::out_of_range` and `enum_try_type`
+return `std::nullopt`; an undefined value gives `enum_name` an empty string. [`examples/demo.cc`](examples/demo.cc) walks
 every member of an enum without naming one.
 
 ## 🎯 When to use it
@@ -76,6 +76,7 @@ every member of an enum without naming one.
 - [docs/API.md](docs/API.md): `ENUM_CLASS`, `ENUM`, and the accessors.
 - [ARCHITECTURE.md](ARCHITECTURE.md): the preprocessor map and the two perfect
   hashes.
+- [CHANGELOG.md](CHANGELOG.md): changes by date.
 - [AGENTS.md](AGENTS.md): repository map, invariants, and traps.
 
 ## 🛠️ Building and testing

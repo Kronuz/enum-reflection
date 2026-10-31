@@ -22,8 +22,7 @@ underneath them):
 on) and `hashes.hh` (the `hhl`/`hmix`/`fhhl`/`fhmix` macros that feed names and
 values into that hash). Both come in through `FetchContent` at their branch tips;
 `hashes` brings `static-string` and `char-classify` with it. Nothing else enters
-except the C++ standard library (`<string_view>`, and `std::out_of_range` via
-`<stdexcept>`, which arrives transitively through `phf.hh`).
+except the C++ standard library (`<optional>`, `<stdexcept>`, `<string_view>`).
 
 ## How ENUM_CLASS works
 
@@ -34,7 +33,7 @@ in `constexpr`, in three layers.
 chain and `ENUM_COUNT`) is a classic Better-Enums-style trick: count the
 variadic members, then apply a per-member macro across all of them. This is what
 lets one `ENUM_CLASS(...)` line expand into the enum body, a `values[]` array, a
-`names[]` array, and the per-member `case` labels of the lookup switches —
+`names[]` array, and the per-member `case` labels of the lookup switches,
 without the caller repeating the member list. `ENUM_FALLBACK` handles members
 written with an explicit initializer (`Ok = 200`) so the name array stores `"Ok"`,
 not `"Ok = 200"`; `_enum_name_length` trims at the first `= \t\n`.
@@ -58,21 +57,20 @@ then just a `switch` on the perfect-hash slot
 whose `case` labels are the compile-time hashes of the known members, returning
 the parallel array entry. Because the hash is *perfect* over the known key set,
 each member gets a distinct slot and the switch has no collisions; an unknown
-input falls to the `default` — `enum_name` returns `""`, `enum_try_type` returns
+input falls to the `default`: `enum_name` returns `""`, `enum_try_type` returns
 `std::nullopt`, `enum_type` throws `std::out_of_range`.
 
 ## Why this shape
 
 The whole point is that the mapping is `constexpr`: `enum_name(Color::Red)` and
 `enum_type<Color>("Red")` are usable in a `static_assert`, with no runtime
-table-building and no per-call string scan. A perfect hash is what makes that
-affordable — the alternative, a linear scan or a runtime `std::map`, would be
-neither `constexpr`-friendly nor branch-light. The two dependencies exist only
+table-building and no per-call string scan. A perfect hash makes that affordable:
+each lookup is one hash and one `switch`, where a linear scan or a runtime
+`std::map` is neither `constexpr`-friendly nor branch-light. The two dependencies exist only
 because the generated code reaches for them: `constexpr-phf` is the hash itself,
 and `hashes` provides the hashing macros (`hmix` for the integer values, the
 case-insensitive `hhl` for the names) plus the `find()`-composed `fhmix`/`fhhl`
-that the `make_phf` initializers and `case` labels are written in terms of. Both
-were in the same compile-time bundle in Xapiand, so pulling them in as siblings
-keeps the edges honest — `enum-reflection` declares what it actually uses rather
-than vendoring copies that drift. Everything else is standard library and
+that the `make_phf` initializers and `case` labels are written in terms of. Taking
+them as sibling libraries keeps the dependency edges explicit: `enum-reflection`
+declares what it uses and vendors no copies. Everything else is standard library and
 `constexpr`.
