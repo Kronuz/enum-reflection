@@ -1265,6 +1265,8 @@
 #define _ENUM_TO_SINGLE_PHF_NAMES_CASE(Enum, index, expression) \
 	ENUM_FALLBACK(_ENUM_EMPTY, _ENUM_PHF_NAMES_CASE, expression)(Enum, index, expression)
 
+#include <optional>
+#include <stdexcept>
 #include <string_view>
 
 #include "phf.hh"
@@ -1292,6 +1294,10 @@ template <typename T>
 constexpr inline auto enum_find(std::string_view);
 template <typename T>
 constexpr inline T enum_type(std::string_view);
+// Non-throwing form of enum_type: std::nullopt when `name` is not a member (a miss costs
+// a hash and a switch instead of a thrown exception).
+template <typename T>
+constexpr inline std::optional<T> enum_try_type(std::string_view);
 
 #define _ENUM_IMPL(Enum, Underlying, ...) \
 	namespace detail_ ## Enum { \
@@ -1327,12 +1333,19 @@ constexpr inline T enum_type(std::string_view);
 		return _phf_names.fhhl(name); \
 	} \
 	template <> \
-	constexpr inline Enum enum_type<Enum>(std::string_view name) { \
+	constexpr inline std::optional<Enum> enum_try_type<Enum>(std::string_view name) { \
 		switch (enum_find<Enum>(name)) { \
 			_ENUM_MAP(_ENUM_TO_SINGLE_PHF_NAMES_CASE, Enum, __VA_ARGS__) \
 			default: \
-				throw std::out_of_range(""); \
+				return std::nullopt; \
 		} \
+	} \
+	template <> \
+	constexpr inline Enum enum_type<Enum>(std::string_view name) { \
+		if (auto found = enum_try_type<Enum>(name)) { \
+			return *found; \
+		} \
+		throw std::out_of_range(""); \
 	}
 
 #define ENUM_CLASS(Enum, Underlying, ...) \

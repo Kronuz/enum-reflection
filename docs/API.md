@@ -29,7 +29,10 @@ Underlying` plus these free functions, all `constexpr`:
 - **`enum_name(Enum e) -> std::string_view`** — the member's source name, or `""`
   if `e` is not a defined member.
 - **`enum_type<Enum>(std::string_view name) -> Enum`** — the member with that
-  name; throws `std::out_of_range` if no member matches.
+  name (case-insensitive); throws `std::out_of_range` if no member matches.
+- **`enum_try_type<Enum>(std::string_view name) -> std::optional<Enum>`** — the
+  same lookup without the exception: `std::nullopt` on a miss. Use it where
+  misses are expected; a throw costs about a thousand times a hit.
 - **`enum_find(Enum e)`** / **`enum_find<Enum>(std::string_view name)`** — the raw
   perfect-hash slot for a value / a name. These are what `enum_name` and
   `enum_type` switch on; rarely needed directly.

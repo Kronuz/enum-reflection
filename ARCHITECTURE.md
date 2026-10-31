@@ -53,12 +53,13 @@ macro bakes two `phf::make_phf` tables at compile time:
   each member name, driving `enum_find<Enum>(string_view)` and the `enum_type`
   switch (name -> value).
 
-`enum_name` and `enum_type` are then just a `switch` on the perfect-hash slot
+`enum_name` and `enum_try_type` (which `enum_type` wraps, throwing on a miss) are
+then just a `switch` on the perfect-hash slot
 whose `case` labels are the compile-time hashes of the known members, returning
 the parallel array entry. Because the hash is *perfect* over the known key set,
 each member gets a distinct slot and the switch has no collisions; an unknown
-input falls to the `default` — `enum_name` returns `""`, `enum_type` throws
-`std::out_of_range`.
+input falls to the `default` — `enum_name` returns `""`, `enum_try_type` returns
+`std::nullopt`, `enum_type` throws `std::out_of_range`.
 
 ## Why this shape
 

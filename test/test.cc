@@ -137,6 +137,14 @@ static void test_unknown_string() {
 	}
 	assert(threw && "enum_type of an unknown name throws std::out_of_range");
 
+	// The non-throwing form: a miss is std::nullopt, a hit is the member
+	// (case-insensitive, like enum_type), and it is usable in a constant expression.
+	static_assert(enum_try_type<Color>("Red") == Color::Red, "enum_try_type hit");
+	static_assert(!enum_try_type<Color>("Purple").has_value(), "enum_try_type miss");
+	assert(!enum_try_type<Color>("Purple") && "enum_try_type of an unknown name is nullopt");
+	assert(!enum_try_type<Color>("") && "enum_try_type of the empty name is nullopt");
+	assert(enum_try_type<Color>("rEd") == Color::Red && "enum_try_type is case-insensitive");
+
 	// enum_name of an out-of-range value falls through to the empty string
 	// (it returns "", it does not throw).
 	assert(enum_name(static_cast<Color>(99)).empty() &&
