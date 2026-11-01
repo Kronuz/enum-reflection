@@ -46,6 +46,19 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   target_link_libraries(enum_reflection_test PRIVATE enum_reflection)
   add_test(NAME enum_reflection COMMAND enum_reflection_test)
 
+  # Name lookup against a brute-force oracle, including names forged to collide with a
+  # member's hash (they must be a miss).
+  add_executable(enum_reflection_names test/names_test.cc)
+  target_link_libraries(enum_reflection_names PRIVATE enum_reflection)
+  add_test(NAME enum_reflection_names COMMAND enum_reflection_names)
+
+  # Lookup cost: cmake -B build -DENUM_REFLECTION_BENCH=ON -DCMAKE_BUILD_TYPE=Release
+  option(ENUM_REFLECTION_BENCH "Build the lookup benchmark" OFF)
+  if(ENUM_REFLECTION_BENCH)
+    add_executable(enum_reflection_bench bench/bench.cc)
+    target_link_libraries(enum_reflection_bench PRIVATE enum_reflection)
+  endif()
+
   # A runnable tour of the library (not a test): build & run ./build/enum_reflection_demo
   add_executable(enum_reflection_demo examples/demo.cc)
   target_link_libraries(enum_reflection_demo PRIVATE enum_reflection)

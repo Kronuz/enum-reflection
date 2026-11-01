@@ -1258,9 +1258,14 @@
 #define _ENUM_TO_SINGLE_PHF_VALUES_CASE(Enum, index, expression) \
 	ENUM_FALLBACK(_ENUM_EMPTY, _ENUM_PHF_VALUES_CASE, expression)(Enum, index, expression)
 
+// A slot is a candidate, not an answer: the hash of a name that is not a member can collide
+// with one that is, so the name is compared (ASCII case-insensitively) before it is accepted.
 #define _ENUM_PHF_NAMES_CASE(Enum, index, expression) \
 	case enum_find<Enum>(detail_ ## Enum::names[index]): \
-		return detail_ ## Enum::values[index];
+		if (_enum_name_equal(name, detail_ ## Enum::names[index])) { \
+			return detail_ ## Enum::values[index]; \
+		} \
+		return std::nullopt;
 
 #define _ENUM_TO_SINGLE_PHF_NAMES_CASE(Enum, index, expression) \
 	ENUM_FALLBACK(_ENUM_EMPTY, _ENUM_PHF_NAMES_CASE, expression)(Enum, index, expression)
@@ -1281,6 +1286,27 @@ constexpr inline std::size_t _enum_name_length(const char *s, std::size_t index 
 	return _enum_name_ends(s[index]) ? index : _enum_name_length(s, index + 1);
 }
 
+// ASCII case-insensitive equality: A-Z fold to a-z, every other byte compares as is. The
+// exact-case comparison goes first: it is the common hit and is cheaper than folding.
+constexpr inline bool _enum_name_equal(std::string_view a, std::string_view b) {
+	if (a.size() != b.size()) {
+		return false;
+	}
+	if (a == b) {
+		return true;
+	}
+	for (std::size_t i = 0; i < a.size(); ++i) {
+		char ca = a[i];
+		char cb = b[i];
+		if (ca >= 'A' && ca <= 'Z') { ca = static_cast<char>(ca + ('a' - 'A')); }
+		if (cb >= 'A' && cb <= 'Z') { cb = static_cast<char>(cb + ('a' - 'A')); }
+		if (ca != cb) {
+			return false;
+		}
+	}
+	return true;
+}
+
 template <typename Enum>
 class _enum_value {
 	Enum value;
@@ -1295,7 +1321,8 @@ constexpr inline auto enum_find(std::string_view);
 template <typename T>
 constexpr inline T enum_type(std::string_view);
 // Non-throwing form of enum_type: std::nullopt when `name` is not a member (a miss costs
-// a hash and a switch instead of a thrown exception).
+// a hash and a switch instead of a thrown exception). A name is a member only if it equals
+// a member name ASCII case-insensitively.
 template <typename T>
 constexpr inline std::optional<T> enum_try_type(std::string_view);
 
