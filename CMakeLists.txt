@@ -52,11 +52,28 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   target_link_libraries(enum_reflection_names PRIVATE enum_reflection)
   add_test(NAME enum_reflection_names COMMAND enum_reflection_names)
 
-  # Lookup cost: cmake -B build -DENUM_REFLECTION_BENCH=ON -DCMAKE_BUILD_TYPE=Release
-  option(ENUM_REFLECTION_BENCH "Build the lookup benchmark" OFF)
-  if(ENUM_REFLECTION_BENCH)
+  # Lookup cost and comparison with the usual alternatives, and compile cost:
+  #   cmake -B build -DENUM_REFLECTION_BUILD_BENCH=ON -DCMAKE_BUILD_TYPE=Release
+  #   cmake --build build --target enum_reflection_bench && build/enum_reflection_bench
+  # Abseil is only looked for here (find_package); without it the flat_hash_map rows are left out.
+  option(ENUM_REFLECTION_BUILD_BENCH "Build the lookup benchmark" OFF)
+  if(ENUM_REFLECTION_BUILD_BENCH)
     add_executable(enum_reflection_bench bench/bench.cc)
+    target_include_directories(enum_reflection_bench PRIVATE bench)
     target_link_libraries(enum_reflection_bench PRIVATE enum_reflection)
+    find_package(absl QUIET)
+    if(absl_FOUND)
+      target_link_libraries(enum_reflection_bench PRIVATE absl::flat_hash_map)
+      target_compile_definitions(enum_reflection_bench PRIVATE HAVE_ABSL=1)
+    endif()
+    # The answers of every row, without timing: identity for each member, no near miss accepted.
+    add_test(NAME enum_reflection_bench_check COMMAND enum_reflection_bench --check)
+    # The compile-time rows: build each of these on its own and time it.
+    add_library(enum_reflection_ct OBJECT EXCLUDE_FROM_ALL bench/compile_time.cc)
+    target_include_directories(enum_reflection_ct PRIVATE bench)
+    target_link_libraries(enum_reflection_ct PRIVATE enum_reflection)
+    add_library(enum_reflection_ct_base OBJECT EXCLUDE_FROM_ALL bench/compile_base.cc)
+    target_link_libraries(enum_reflection_ct_base PRIVATE enum_reflection)
   endif()
 
   # A runnable tour of the library (not a test): build & run ./build/enum_reflection_demo

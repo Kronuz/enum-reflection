@@ -11,10 +11,14 @@ easy to fall into.
 enum.h                       ENUM_CLASS / ENUM macros + constexpr enum_name / enum_type / enum_find. Header.
 test/test.cc                 Runnable smoke test: enum->string, string->enum, perfect-hash dispatch, unknown name, round-trip.
 test/names_test.cc           Name lookup against a brute-force oracle: exhaustive short strings, case variants, random bytes, and strings forged to share a member's hash (CTest `enum_reflection_names`).
+bench/bench.cc               Name lookups against an array by value, binary search, a linear scan, a sorted array and (when Abseil is found) absl::flat_hash_map; every answer is checked, near misses must be rejected (-DENUM_REFLECTION_BUILD_BENCH=ON; CTest `enum_reflection_bench_check` runs the checks with `--check`, without timing).
+bench/gen_enums.py           Writes bench/enums.h: dense enums of 8, 32 and 128 members, a sparse one of 32, and their name tables.
+bench/compile_time.cc        The accessors of those enums in one translation unit; compile_base.cc is the same without them (CMake targets enum_reflection_ct, enum_reflection_ct_base, excluded from `all`).
 CMakeLists.txt               INTERFACE library `enum_reflection` (+ alias enum_reflection::enum_reflection); FetchContents constexpr-phf + hashes; CTest test `enum_reflection`.
 LICENSE                      MIT, Copyright (c) 2015-2019 Dubalu LLC (+ Anton Bachin, in the header).
 README.md                    What it is, install, quick start.
 docs/API.md                  ENUM_CLASS, ENUM, and the accessors.
+docs/perf/lookup.md          Lookup cost against the alternatives and compile cost, with machines, compiler, commands and numbers.
 docs/enum-reflection.d2      The README diagram's source (docs/enum-reflection.svg is rendered from it).
 ARCHITECTURE.md              How ENUM_CLASS works: the variadic map, the two reflected tables, the two perfect hashes.
 ```
