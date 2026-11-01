@@ -60,6 +60,16 @@ each member gets a distinct slot and the switch has no collisions; an unknown
 input falls to the `default`: `enum_name` returns `""`, `enum_try_type` returns
 `std::nullopt`, `enum_type` throws `std::out_of_range`.
 
+The name direction compares before it answers. The slot comes from a 64-bit hash,
+and a hash does not prove equality: the name hash is a chain of invertible steps,
+so a string that is not a member can be built to share a member's hash. Each
+`case` of the name switch therefore compares the input with the member's name
+(`_enum_name_equal`: the exact bytes first, then with `A` to `Z` folded and every other byte compared as is) and
+returns `std::nullopt` on a mismatch. A hit costs one extra comparison of
+`length` bytes; a miss that never reaches a member's slot costs nothing extra.
+The value direction needs no comparison: the integer mixer is a bijection, so two
+values never share a hash.
+
 ## Why this shape
 
 The whole point is that the mapping is `constexpr`: `enum_name(Color::Red)` and

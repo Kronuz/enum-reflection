@@ -29,13 +29,17 @@ Underlying` plus these free functions, all `constexpr`:
 - **`enum_name(Enum e) -> std::string_view`**: the member's source name, or `""`
   if `e` is not a defined member.
 - **`enum_type<Enum>(std::string_view name) -> Enum`**: the member with that
-  name (case-insensitive); throws `std::out_of_range` if no member matches.
+  name, compared ASCII case-insensitively (`A` to `Z` fold, every other byte
+  must match); throws `std::out_of_range` if no member matches. The perfect hash
+  selects one candidate member and the name is then compared with it, so a
+  string is accepted only if it is a member name.
 - **`enum_try_type<Enum>(std::string_view name) -> std::optional<Enum>`**: the
   same lookup without the exception: `std::nullopt` on a miss. Use it where
-  misses are expected; a throw costs about a thousand times a hit.
+  misses are expected; a throw costs several hundred times a hit.
 - **`enum_find(Enum e)`** / **`enum_find<Enum>(std::string_view name)`**: the raw
   perfect-hash slot for a value / a name. These are what `enum_name` and
-  `enum_type` switch on; rarely needed directly.
+  `enum_type` switch on; rarely needed directly. A slot only says which member
+  to compare with: a name that is not a member can have a member's slot.
 
 Members may carry explicit values (`Ok = 200, NotFound = 404, ...`); the value
 dispatch keys on the underlying value, not the declaration order, and a sparse,

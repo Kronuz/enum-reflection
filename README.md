@@ -61,7 +61,7 @@ static_assert(enum_type<Status>("Teapot") == Status::Teapot);
 int main() {}
 ```
 
-An unknown name makes `enum_type` throw `std::out_of_range` and `enum_try_type`
+A name matches a member when the two are equal ignoring ASCII case. An unknown name makes `enum_type` throw `std::out_of_range` and `enum_try_type`
 return `std::nullopt`; an undefined value gives `enum_name` an empty string. [`examples/demo.cc`](examples/demo.cc) walks
 every member of an enum without naming one.
 

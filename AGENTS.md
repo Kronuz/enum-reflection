@@ -10,6 +10,7 @@ easy to fall into.
 ```
 enum.h                       ENUM_CLASS / ENUM macros + constexpr enum_name / enum_type / enum_find. Header.
 test/test.cc                 Runnable smoke test: enum->string, string->enum, perfect-hash dispatch, unknown name, round-trip.
+test/names_test.cc           Name lookup against a brute-force oracle: exhaustive short strings, case variants, random bytes, and strings forged to share a member's hash (CTest `enum_reflection_names`).
 CMakeLists.txt               INTERFACE library `enum_reflection` (+ alias enum_reflection::enum_reflection); FetchContents constexpr-phf + hashes; CTest test `enum_reflection`.
 LICENSE                      MIT, Copyright (c) 2015-2019 Dubalu LLC (+ Anton Bachin, in the header).
 README.md                    What it is, install, quick start.
@@ -75,6 +76,12 @@ cmake -B build \
 - **`enum_type` wraps `enum_try_type`.** The name switch is generated once, in
   `enum_try_type`, whose `default` returns `std::nullopt`; `enum_type` throws
   `std::out_of_range` on that `std::nullopt`. Keep one switch per enum.
+- **A slot is a candidate, not an answer.** Each `case` of the name switch compares the
+  input with the member's name (`_enum_name_equal`, ASCII case-insensitive) before it
+  returns the value. The 64-bit name hash is invertible, so a string that is not a member
+  can have a member's hash; without the comparison `enum_try_type` and `enum_type` accept
+  it. `test/names_test.cc` forges such strings; keep the comparison and the fold in step
+  with `wordwise_ci` (it folds `A` to `Z` only).
 - **Both directions are independent perfect hashes.** `enum_name` keys on a hash
   of the underlying *value* (`hmix`), `enum_type` on a hash of the *name* (`hhl`,
   case-insensitive FNV-1a). Don't collapse them or assume a slot from one is valid
@@ -85,8 +92,8 @@ cmake -B build \
 
 ## How to extend
 
-- **Always extend the smoke test.** `test/test.cc` is the only executable check.
-  Prefer `static_assert` for anything that is `constexpr` (almost the whole API),
+- **Always extend the smoke test.** `test/test.cc` and `test/names_test.cc` are the
+  executable checks. Prefer `static_assert` for anything that is `constexpr` (almost the whole API),
   so a regression is a compile error, not a silent runtime pass. When you add a
   shape the macros must handle (an empty member list, a member with an explicit
   value, a large enum), add an `ENUM_CLASS` for it and assert both directions.
