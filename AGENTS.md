@@ -15,11 +15,10 @@ bench/bench.cc               Name lookups against an array by value, binary sear
 bench/gen_enums.py           Writes bench/enums.h: dense enums of 8, 32 and 128 members, a sparse one of 32, and their name tables.
 bench/compile_time.cc        The accessors of those enums in one translation unit; compile_base.cc is the same without them (CMake targets enum_reflection_ct, enum_reflection_ct_base, excluded from `all`).
 CMakeLists.txt               INTERFACE library `enum_reflection` (+ alias enum_reflection::enum_reflection); FetchContents constexpr-phf + hashes; CTest test `enum_reflection`.
-LICENSE                      MIT, Copyright (c) 2015-2019 Dubalu LLC (+ Anton Bachin, in the header).
+LICENSE                      MIT, Copyright (c) 2026 Germán Méndez Bravo and (c) 2015-2020 Dubalu LLC (+ Anton Bachin, in the header).
 README.md                    What it is, install, quick start.
 docs/API.md                  ENUM_CLASS, ENUM, and the accessors.
 docs/perf/lookup.md          Lookup cost against the alternatives and compile cost, with machines, compiler, commands and numbers.
-docs/enum-reflection.d2      The README diagram's source (docs/enum-reflection.svg is rendered from it).
 ARCHITECTURE.md              How ENUM_CLASS works: the variadic map, the two reflected tables, the two perfect hashes.
 ```
 
