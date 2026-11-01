@@ -99,18 +99,27 @@ Not for:
 
 ## ⚡ Performance
 
-`bench/bench.cc` checks every row's answer, then times lookups cycling through
-the names in a shuffled order: the median of nine runs of about a million
-lookups, ns per lookup, enum-reflection / the comparator. Apple clang 17, libc++,
-Release, abseil from Homebrew (20260817.0 on the M4 Pro):
+`enum_reflection_bench` times lookups cycling through the names in a shuffled order: the median of
+nine runs of about a million lookups, in ns per lookup, Apple clang 17 with libc++ and `-O3`, on an
+Apple M4 Pro (macOS 26, arm64) and an Intel Core i9-9980HK (macOS 15, x86-64). Each row is one
+lookup on one enum, and each machine has two columns: *enum-reflection* is the library's call
+and *comparator* is the alternative named in the row, written for the benchmark: `enum_type` hit
+finds a name that is a member, `enum_try_type` miss one that is not, and `enum_name` finds the
+name of a value. The comparators are
+[`absl::flat_hash_map`](https://github.com/abseil/abseil-cpp/releases/tag/20260817.0) 20260817.0
+from `std::string_view` to value (Homebrew), a *linear scan* of the
+names in order, and a *binary search by value* over the sorted `(value, name)` pairs. Before
+timing, the benchmark checks that every comparator answers as enum-reflection does: each member's
+name and value round-trip, and about eight near misses per member (one letter changed) are
+rejected.
 
-| lookup | comparator | Apple M4 Pro | Intel Core i9-9980HK |
-|---|---|---:|---:|
-| `enum_type` hit, 32 members | `absl::flat_hash_map` | 4.8 / 4.5 | 12.7 / 12.1 |
-| `enum_type` hit, 32 members | linear scan | 4.8 / 17.6 | 12.7 / 43.0 |
-| `enum_type` hit, 128 members | `absl::flat_hash_map` | 8.4 / 4.8 | 20.0 / 13.5 |
-| `enum_try_type` miss, 128 members | `absl::flat_hash_map` | 3.2 / 2.4 | 9.9 / 6.0 |
-| `enum_name`, 32 sparse members | binary search by value | 1.5 / 3.7 | 3.7 / 3.9 |
+| lookup | comparator | M4 Pro: enum-reflection | M4 Pro: comparator | i9-9980HK: enum-reflection | i9-9980HK: comparator |
+|---|---|---:|---:|---:|---:|
+| `enum_type` hit, 32 members | `absl::flat_hash_map` | 4.8 | 4.5 | 12.7 | 12.1 |
+| `enum_type` hit, 32 members | linear scan | 4.8 | 17.6 | 12.7 | 43.0 |
+| `enum_type` hit, 128 members | `absl::flat_hash_map` | 8.4 | 4.8 | 20.0 | 13.5 |
+| `enum_try_type` miss, 128 members | `absl::flat_hash_map` | 3.2 | 2.4 | 9.9 | 6.0 |
+| `enum_name`, 32 sparse members | binary search by value | 1.5 | 3.7 | 3.7 | 3.9 |
 
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DENUM_REFLECTION_BUILD_BENCH=ON
