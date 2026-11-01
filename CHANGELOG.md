@@ -8,6 +8,10 @@ library has no releases.
 
 ### Added
 
+- `bench/bench.cc` times [magic_enum](https://github.com/Neargye/magic_enum) v0.9.8
+  (`enum_cast`, `enum_name`) beside the lookups, fetched and built only with
+  `-DENUM_REFLECTION_BENCH_MAGIC_ENUM=ON`, and checks its answers, near misses included, before
+  timing.
 - `docs/perf/lookup.md`: what a lookup costs against an array by value, a binary search, a
   linear scan, a sorted array and `absl::flat_hash_map` for enums of 8, 32 and 128 members and
   a sparse one of 32, on an Apple M4 Pro and an Intel i9-9980HK, and what the generated

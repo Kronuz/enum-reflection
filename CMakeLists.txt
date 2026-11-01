@@ -66,6 +66,20 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
       target_link_libraries(enum_reflection_bench PRIVATE absl::flat_hash_map)
       target_compile_definitions(enum_reflection_bench PRIVATE HAVE_ABSL=1)
     endif()
+    # magic_enum, the usual reflection library, as a comparator: fetched for this target only.
+    option(ENUM_REFLECTION_BENCH_MAGIC_ENUM "Fetch magic_enum v0.9.8 as a benchmark-only comparator" OFF)
+    if(ENUM_REFLECTION_BENCH_MAGIC_ENUM)
+      include(FetchContent)
+      set(MAGIC_ENUM_OPT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+      set(MAGIC_ENUM_OPT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+      set(MAGIC_ENUM_OPT_INSTALL OFF CACHE BOOL "" FORCE)
+      FetchContent_Declare(magic_enum
+        GIT_REPOSITORY https://github.com/Neargye/magic_enum.git
+        GIT_TAG        1384769c66bd16ec9bb1353f45fe8ec8ccc12dbd)  # v0.9.8
+      FetchContent_MakeAvailable(magic_enum)
+      target_link_libraries(enum_reflection_bench PRIVATE magic_enum::magic_enum)
+      target_compile_definitions(enum_reflection_bench PRIVATE HAVE_MAGIC_ENUM=1)
+    endif()
     # The answers of every row, without timing: identity for each member, no near miss accepted.
     add_test(NAME enum_reflection_bench_check COMMAND enum_reflection_bench --check)
     # The compile-time rows: build each of these on its own and time it.

@@ -4,13 +4,21 @@
 //   2. the lookups against the usual alternatives for enums of 8, 32 and 128 members and a
 //      sparse one of 32: an array indexed by value, a binary search by value, a linear scan
 //      of the names (what magic_enum-style libraries do), a sorted array of names, and
-//      absl::flat_hash_map when Abseil is found (it is optional, and only this target uses it).
+//      absl::flat_hash_map when Abseil is found and magic_enum (magic_enum::enum_cast and
+//      enum_name) when built with ENUM_REFLECTION_BENCH_MAGIC_ENUM; both are optional and only
+//      this target uses them. Every comparator must return what enum-reflection returns.
 // Build: cmake -B build -DENUM_REFLECTION_BUILD_BENCH=ON -DCMAKE_BUILD_TYPE=Release
 //        cmake --build build --target enum_reflection_bench && build/enum_reflection_bench
 // Time it on an otherwise idle machine; each row is the median of 9 runs.
-// Abseil first: enum.h defines macros whose names its headers use.
+// Abseil and magic_enum first: enum.h defines macros whose names their headers use.
 #ifdef HAVE_ABSL
 #include "absl/container/flat_hash_map.h"
+#endif
+#ifdef HAVE_MAGIC_ENUM
+// magic_enum reflects the values in [MAGIC_ENUM_RANGE_MIN, MAGIC_ENUM_RANGE_MAX] (default -128..128);
+// the sparse enum reaches 220.
+#define MAGIC_ENUM_RANGE_MAX 256
+#include "magic_enum/magic_enum.hpp"
 #endif
 
 #include <algorithm>
@@ -109,12 +117,18 @@ static void compare(const char* label, const std::pair<std::string_view, int> (&
 	std::size_t accepted = 0, probes = 0;
 	for (std::size_t i = 0; i < N; ++i) {
 		if (enum_name(E(vals[i])) != names[i] || enum_type<E>(names[i]) != E(vals[i])) { std::printf("MISMATCH %s %zu\n", label, i); std::exit(1); }
+#ifdef HAVE_MAGIC_ENUM
+		if (magic_enum::enum_name(E(vals[i])) != names[i] || magic_enum::enum_cast<E>(names[i]) != std::optional<E>(E(vals[i]))) { std::printf("MAGIC_ENUM MISMATCH %s %zu\n", label, i); std::exit(1); }
+#endif
 		for (int k = 0; k < 8; ++k) {
 			std::string s = names[i];
 			s[rng() % s.size()] = char('a' + rng() % 26);
 			if (std::find(lowered_names.begin(), lowered_names.end(), lower(s)) != lowered_names.end()) { continue; }
 			++probes;
 			if (enum_try_type<E>(s)) { ++accepted; }
+#ifdef HAVE_MAGIC_ENUM
+			if (magic_enum::enum_cast<E>(s)) { std::printf("MAGIC_ENUM FALSE ACCEPT %s %s\n", label, s.c_str()); std::exit(1); }
+#endif
 		}
 	}
 	std::printf("%-10s near-miss probes %zu, accepted %zu\n", label, probes, accepted);
@@ -138,6 +152,9 @@ static void compare(const char* label, const std::pair<std::string_view, int> (&
 
 	row("name(value)", "enum_name", measure_ops([&](std::size_t n) { std::size_t s = 0; for (std::size_t i = 0; i < n; ++i) { s += enum_name(E(vals[order[i % N]])).size(); } use(s); }));
 	if (dense) { row("name(value)", "array by value", measure_ops([&](std::size_t n) { std::size_t s = 0; for (std::size_t i = 0; i < n; ++i) { s += array[vals[order[i % N]]].size(); } use(s); })); }
+#ifdef HAVE_MAGIC_ENUM
+	row("name(value)", "magic_enum::enum_name", measure_ops([&](std::size_t n) { std::size_t s = 0; for (std::size_t i = 0; i < n; ++i) { s += magic_enum::enum_name(E(vals[order[i % N]])).size(); } use(s); }));
+#endif
 	row("name(value)", "binary search by value", measure_ops([&](std::size_t n) {
 		std::size_t s = 0;
 		for (std::size_t i = 0; i < n; ++i) { auto it = std::lower_bound(by_value.begin(), by_value.end(), std::make_pair(vals[order[i % N]], std::string_view())); s += it->second.size(); }
@@ -155,6 +172,9 @@ static void compare(const char* label, const std::pair<std::string_view, int> (&
 		for (std::size_t i = 0; i < n; ++i) { std::string_view q = names[order[i % N]]; auto it = std::lower_bound(sorted.begin(), sorted.end(), q, [](const auto& a, std::string_view b) { return a.first < b; }); s += it->second; }
 		use(s);
 	}));
+#ifdef HAVE_MAGIC_ENUM
+	row("value(name) hit", "magic_enum::enum_cast", measure_ops([&](std::size_t n) { int s = 0; for (std::size_t i = 0; i < n; ++i) { s += int(*magic_enum::enum_cast<E>(std::string_view(names[order[i % N]]))); } use(s); }));
+#endif
 #ifdef HAVE_ABSL
 	row("value(name) hit", "absl::flat_hash_map", measure_ops([&](std::size_t n) { int s = 0; for (std::size_t i = 0; i < n; ++i) { s += map.find(std::string_view(names[order[i % N]]))->second; } use(s); }));
 #endif
@@ -165,6 +185,9 @@ static void compare(const char* label, const std::pair<std::string_view, int> (&
 		for (std::size_t i = 0; i < n; ++i) { try { s += int(enum_type<E>(std::string_view(misses[i % N]))); } catch (const std::out_of_range&) { ++s; } }
 		use(s);
 	}, 20000));
+#ifdef HAVE_MAGIC_ENUM
+	row("value(name) miss", "magic_enum::enum_cast", measure_ops([&](std::size_t n) { int s = 0; for (std::size_t i = 0; i < n; ++i) { s += magic_enum::enum_cast<E>(std::string_view(misses[i % N])).has_value(); } use(s); }));
+#endif
 #ifdef HAVE_ABSL
 	row("value(name) miss", "absl::flat_hash_map", measure_ops([&](std::size_t n) { int s = 0; for (std::size_t i = 0; i < n; ++i) { s += map.find(std::string_view(misses[i % N])) == map.end(); } use(s); }));
 #endif
