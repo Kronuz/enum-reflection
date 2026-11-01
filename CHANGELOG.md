@@ -4,6 +4,26 @@ Notable changes to enum-reflection, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); entries are dated because the
 library has no releases.
 
+## 2026-11-01
+
+### Added
+
+- `docs/perf/lookup.md`: what a lookup costs against an array by value, a binary search, a
+  linear scan, a sorted array and `absl::flat_hash_map` for enums of 8, 32 and 128 members and
+  a sparse one of 32, on an Apple M4 Pro and an Intel i9-9980HK, and what the generated
+  tables cost to compile. A hit costs the same as the hash map's up to 32 members, and 1.5x
+  to 1.7x more at 128; a miss costs 1.5x to 2x more at every size.
+- `bench/bench.cc` runs those comparisons, checks every answer, and exits non-zero when a near
+  miss (a member's name with one letter changed) is accepted. With `--check` it runs the
+  checks alone, which is CTest `enum_reflection_bench_check` when the benchmark is built. `bench/gen_enums.py` writes the
+  enums it uses; `bench/compile_time.cc` and `bench/compile_base.cc` time the compile cost
+  (CMake targets `enum_reflection_ct` and `enum_reflection_ct_base`, outside `all`).
+
+### Changed
+
+- The CMake option that builds the benchmark is `ENUM_REFLECTION_BUILD_BENCH` (it was
+  `ENUM_REFLECTION_BENCH`). CI builds the benchmark target.
+
 ## 2026-10-31
 
 ### Fixed

@@ -69,13 +69,15 @@ every member of an enum without naming one.
 
 - ✅ Enums that appear in text: configuration, protocols, logs, command lines.
 - ❌ Enums with very many members: the macro expands per member, which costs
-  compile time.
+  compile time (about 25 ms per name on an Apple M4 Pro, see
+  [docs/perf/lookup.md](docs/perf/lookup.md)).
 
 ## 📚 Documentation
 
 - [docs/API.md](docs/API.md): `ENUM_CLASS`, `ENUM`, and the accessors.
 - [ARCHITECTURE.md](ARCHITECTURE.md): the preprocessor map and the two perfect
   hashes.
+- [docs/perf/lookup.md](docs/perf/lookup.md): lookup and compile cost against the alternatives.
 - [CHANGELOG.md](CHANGELOG.md): changes by date.
 - [AGENTS.md](AGENTS.md): repository map, invariants, and traps.
 
