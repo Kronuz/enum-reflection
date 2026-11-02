@@ -103,35 +103,44 @@ Not for:
 nine runs of about a million lookups, in ns per lookup, Apple clang 17 with libc++ and `-O3`, on an
 Apple M4 Pro (macOS 26, arm64) and an Intel Core i9-9980HK (macOS 15, x86-64). Each row is one
 lookup on one enum, and each machine has two columns: *enum-reflection* is the library's call
-and *comparator* is the alternative named in the row, written for the benchmark: `enum_type` hit
-finds a name that is a member, `enum_try_type` miss one that is not, and `enum_name` finds the
-name of a value. The comparators are
-[`absl::flat_hash_map`](https://github.com/abseil/abseil-cpp/releases/tag/20260817.0) 20260817.0
-from `std::string_view` to value (Homebrew), a *linear scan* of the
-names in order, and a *binary search by value* over the sorted `(value, name)` pairs. Before
-timing, the benchmark checks that every comparator answers as enum-reflection does: each member's
-name and value round-trip, and about eight near misses per member (one letter changed) are
-rejected.
+and *comparator* is the alternative named in the row: `enum_type` hit finds a name that is a
+member, `enum_try_type` miss one that is not, and `enum_name` finds the name of a value. The
+comparators are [`absl::flat_hash_map`](https://github.com/abseil/abseil-cpp/releases/tag/20260817.0)
+20260817.0 from `std::string_view` to value (Homebrew); [magic_enum](https://github.com/Neargye/magic_enum)
+v0.9.8, a widely used reflection library (`enum_cast`, `enum_name`; its range is widened to 256 for
+the sparse enum, and `enum_cast` is case-sensitive where the library's lookup ignores case); a *linear
+scan* of the names in order; and a *binary search by value* over the sorted `(value, name)` pairs.
+Before timing, the benchmark checks that every comparator answers as enum-reflection does: each
+member's name and value round-trip, and about eight near misses per member (one letter changed) are
+rejected. Lower is faster.
 
 | lookup | comparator | M4 Pro: enum-reflection | M4 Pro: comparator | i9-9980HK: enum-reflection | i9-9980HK: comparator |
 |---|---|---:|---:|---:|---:|
-| `enum_type` hit, 32 members | `absl::flat_hash_map` | 4.8 | 4.5 | 12.7 | 12.1 |
-| `enum_type` hit, 32 members | linear scan | 4.8 | 17.6 | 12.7 | 43.0 |
-| `enum_type` hit, 128 members | `absl::flat_hash_map` | 8.4 | 4.8 | 20.0 | 13.5 |
-| `enum_try_type` miss, 128 members | `absl::flat_hash_map` | 3.2 | 2.4 | 9.9 | 6.0 |
-| `enum_name`, 32 sparse members | binary search by value | 1.5 | 3.7 | 3.7 | 3.9 |
+| `enum_type` hit, 32 members | `absl::flat_hash_map` | 4.8 | 4.4 | 11.5 | 11.3 |
+| `enum_type` hit, 32 members | linear scan | 4.8 | 17.6 | 11.5 | 42.5 |
+| `enum_type` hit, 32 members | `magic_enum::enum_cast` | 4.8 | 17.6 | 11.5 | 44.4 |
+| `enum_type` hit, 128 members | `absl::flat_hash_map` | 7.9 | 4.3 | 18.9 | 12.7 |
+| `enum_type` hit, 128 members | `magic_enum::enum_cast` | 7.9 | 62.9 | 18.9 | 136.7 |
+| `enum_try_type` miss, 128 members | `absl::flat_hash_map` | 3.1 | 2.1 | 8.5 | 5.3 |
+| `enum_try_type` miss, 128 members | `magic_enum::enum_cast` | 3.1 | 39.3 | 8.5 | 70.7 |
+| `enum_name`, 32 sparse members | binary search by value | 1.4 | 3.5 | 3.3 | 4.0 |
+| `enum_name`, 32 sparse members | `magic_enum::enum_name` | 1.4 | 1.2 | 3.3 | 2.7 |
+| `enum_name`, 128 dense members | `magic_enum::enum_name` | 1.5 | 0.4 | 3.7 | 1.0 |
 
 ```sh
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DENUM_REFLECTION_BUILD_BENCH=ON
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DENUM_REFLECTION_BUILD_BENCH=ON \
+  -DENUM_REFLECTION_BENCH_MAGIC_ENUM=ON
 cmake --build build --target enum_reflection_bench
 build/enum_reflection_bench
 ```
 
-Up to 32 members a hit costs what the hash map's does; at 128 the map is 1.5x to
-1.7x faster, and it answers misses faster at every size, but it allocates and is
-built at run time. A linear scan wins among 8 names.
-[docs/perf/lookup.md](docs/perf/lookup.md) has every size, `enum_name` against
-an array by value, and the compile cost.
+Up to 32 members a hit costs what the hash map's does; at 128 the map is 1.5x to 1.8x faster, and it
+answers misses 1.5x to 1.6x faster, but it allocates and is built at run time. A linear scan and
+`magic_enum::enum_cast` take 3.7x to 3.9x as long as enum-reflection at 32 members, `enum_cast` 7x to
+8x at 128, and both are about 4x faster among 8 names. `magic_enum::enum_name` reads a table indexed
+by value: it is 1.2x faster at 32 sparse members and 3.7x to 3.8x faster at 128 dense ones.
+[docs/perf/lookup.md](docs/perf/lookup.md) has every size, `enum_name` against an array by value,
+and the compile cost.
 
 ## 📚 Documentation
 
