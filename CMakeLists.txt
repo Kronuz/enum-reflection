@@ -52,6 +52,23 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   target_link_libraries(enum_reflection_names PRIVATE enum_reflection)
   add_test(NAME enum_reflection_names COMMAND enum_reflection_names)
 
+  # Mutation check of the name lookup: edits a copy of enum.h one way at a time (the length check,
+  # the lower-casing, the verification itself, ...) and requires test/names_test.cc to fail for each.
+  # It compiles the test once per edit, so it is off by default:
+  #   cmake -B build -DENUM_REFLECTION_MUTANTS=ON && ctest --test-dir build -R mutants
+  option(ENUM_REFLECTION_MUTANTS "Register the mutation check of the name lookup" OFF)
+  if(ENUM_REFLECTION_MUTANTS)
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_FOUND)
+      add_test(NAME enum_reflection_mutants
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/mutants.py
+                ${CMAKE_CXX_COMPILER} ${CMAKE_CURRENT_SOURCE_DIR} ${FETCHCONTENT_BASE_DIR} -std=c++20 -O1)
+      set_tests_properties(enum_reflection_mutants PROPERTIES TIMEOUT 3600)
+    else()
+      message(STATUS "enum-reflection: no Python 3, the mutation check is not registered")
+    endif()
+  endif()
+
   # Lookup cost and comparison with the usual alternatives, and compile cost:
   #   cmake -B build -DENUM_REFLECTION_BUILD_BENCH=ON -DCMAKE_BUILD_TYPE=Release
   #   cmake --build build --target enum_reflection_bench && build/enum_reflection_bench

@@ -13,4 +13,5 @@ jobs:
   ci:
     uses: Kronuz/cpp-libraries/.github/workflows/cmake.yml@main
     with:
-      cmake_args: -DENUM_REFLECTION_BUILD_BENCH=ON  # builds the benchmark, which no test runs
+      cmake_args: -DENUM_REFLECTION_BUILD_BENCH=ON -DENUM_REFLECTION_MUTANTS=ON  # builds the benchmark, which no test runs; compiles the name test once per mutant
+      freebsd_packages: python3

@@ -1258,21 +1258,14 @@
 #define _ENUM_TO_SINGLE_PHF_VALUES_CASE(Enum, index, expression) \
 	ENUM_FALLBACK(_ENUM_EMPTY, _ENUM_PHF_VALUES_CASE, expression)(Enum, index, expression)
 
-// A slot is a candidate, not an answer: the hash of a name that is not a member can collide
-// with one that is, so the name is compared (ASCII case-insensitively) before it is accepted.
-#define _ENUM_PHF_NAMES_CASE(Enum, index, expression) \
-	case enum_find<Enum>(detail_ ## Enum::names[index]): \
-		if (_enum_name_equal(name, detail_ ## Enum::names[index])) { \
-			return detail_ ## Enum::values[index]; \
-		} \
-		return std::nullopt;
-
-#define _ENUM_TO_SINGLE_PHF_NAMES_CASE(Enum, index, expression) \
-	ENUM_FALLBACK(_ENUM_EMPTY, _ENUM_PHF_NAMES_CASE, expression)(Enum, index, expression)
-
+#include <bit>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <optional>
 #include <stdexcept>
 #include <string_view>
+#include <type_traits>
 
 #include "phf.hh"
 #include "hashes.hh"
@@ -1286,8 +1279,9 @@ constexpr inline std::size_t _enum_name_length(const char *s, std::size_t index 
 	return _enum_name_ends(s[index]) ? index : _enum_name_length(s, index + 1);
 }
 
-// ASCII case-insensitive equality: A-Z fold to a-z, every other byte compares as is. The
-// exact-case comparison goes first: it is the common hit and is cheaper than folding.
+// ASCII case-insensitive equality: A-Z fold to a-z, every other byte compares as is. This is
+// what "the same name" means; it is the check in a constant expression and the oracle for the
+// wide compare below.
 constexpr inline bool _enum_name_equal(std::string_view a, std::string_view b) {
 	if (a.size() != b.size()) {
 		return false;
@@ -1305,6 +1299,338 @@ constexpr inline bool _enum_name_equal(std::string_view a, std::string_view b) {
 		}
 	}
 	return true;
+}
+
+// ---- Looking a name up ----
+//
+// The perfect hash of the input names one member's slot, and the input is that member only if
+// its bytes equal the member's name (ASCII case-insensitively): the 64-bit hash can be forged
+// to collide, and the perfect hash sends every input to some slot. One `_enum_entry` per slot
+// holds what the check needs next to the value, built at compile time, so a hit costs a length
+// compare and a few wide loads instead of a byte loop.
+//
+// An input of up to 16 bytes is read once, in the pieces below, lower-cased a word at a time,
+// and the same words give its hash and are compared with the entry's, which holds the member's
+// name lower-cased the same way (a name of n bytes):
+//
+//   8..16   the first eight bytes and the last eight (they overlap below 16)
+//   4..7    the first four and the last four bytes, merged into the n bytes of the name
+//   1..3    the bytes at 0, n / 2 and n - 1, merged into the n bytes of the name
+//   17..24  the first eight, the next eight and the last eight, against the name itself (`data`)
+//
+// Lower-casing maps A-Z to a-z and leaves every other byte alone, so two names are the same
+// name exactly when their lower-cased bytes are equal. A name of more than 24 bytes is
+// compared eight bytes at a time with the name itself (`data`), out of line. The words are the
+// little-endian integers of those bytes on every host.
+
+#if defined(__GNUC__) || defined(__clang__)
+#define _ENUM_ALWAYS_INLINE inline __attribute__((always_inline))
+#define _ENUM_NOINLINE inline __attribute__((noinline))
+#else
+#define _ENUM_ALWAYS_INLINE inline
+#define _ENUM_NOINLINE inline
+#endif
+
+// Every byte of `w` lower-cased: 'A'..'Z' become 'a'..'z' and every other byte value stays.
+constexpr inline std::uint64_t _enum_lower(std::uint64_t w) {
+	constexpr std::uint64_t ones = 0x0101010101010101ULL;
+	const std::uint64_t low7 = w & (0x7f * ones);
+	const std::uint64_t from_A = low7 + (0x3f * ones);  // bit 7 set when low7 >= 'A'
+	const std::uint64_t past_Z = low7 + (0x25 * ones);  // bit 7 set when low7 > 'Z'
+	return w | ((from_A & ~past_Z & ~w & (0x80 * ones)) >> 2);
+}
+
+// Two words lower-cased at once, in a vector register where the compiler has one: a handful of
+// vector instructions in place of two dozen on the integer pipes, which the rest of a lookup
+// keeps busy. The same result as `_enum_lower` on each word.
+#if defined(__GNUC__) || defined(__clang__)
+typedef unsigned char _enum_bytes16 __attribute__((vector_size(16)));
+typedef unsigned long long _enum_words2 __attribute__((vector_size(16)));
+inline void _enum_lower_pair(std::uint64_t &a, std::uint64_t &b) {
+	const _enum_words2 words = {a, b};
+	const _enum_bytes16 bytes = (_enum_bytes16)words;
+	const _enum_bytes16 upper = (_enum_bytes16)((bytes - 'A') <= 25);  // 0xff in each byte 'A'..'Z'
+	const _enum_words2 result = (_enum_words2)(bytes | (upper & 0x20));
+	a = result[0];
+	b = result[1];
+}
+#else
+inline void _enum_lower_pair(std::uint64_t &a, std::uint64_t &b) {
+	a = _enum_lower(a);
+	b = _enum_lower(b);
+}
+#endif
+
+// Whether the bytes of `input` equal the bytes of `name` up to case (eight at a time).
+constexpr inline bool _enum_word_equal(std::uint64_t input, std::uint64_t name) {
+	return _enum_lower(input) == _enum_lower(name);
+}
+
+// The little-endian integer of `count` bytes at `p`.
+constexpr inline std::uint64_t _enum_pack(const char *p, std::size_t count) {
+	std::uint64_t word = 0;
+	for (std::size_t i = 0; i < count; ++i) {
+		word |= static_cast<std::uint64_t>(static_cast<unsigned char>(p[i])) << (8 * i);
+	}
+	return word;
+}
+
+constexpr inline std::uint64_t _enum_byte(char c) {
+	return static_cast<unsigned char>(c);
+}
+
+constexpr inline std::uint64_t _enum_bswap(std::uint64_t x) {
+	x = ((x & 0x00ff00ff00ff00ffULL) << 8) | ((x >> 8) & 0x00ff00ff00ff00ffULL);
+	x = ((x & 0x0000ffff0000ffffULL) << 16) | ((x >> 16) & 0x0000ffff0000ffffULL);
+	return (x << 32) | (x >> 32);
+}
+
+inline std::uint64_t _enum_load8(const char *p) {
+	std::uint64_t word;
+	std::memcpy(&word, p, 8);
+	return std::endian::native == std::endian::little ? word : _enum_bswap(word);
+}
+
+inline std::uint64_t _enum_load4(const char *p) {
+	std::uint32_t word;
+	std::memcpy(&word, p, 4);
+	return std::endian::native == std::endian::little ? word : static_cast<std::uint64_t>(_enum_bswap(word) >> 32);
+}
+
+// At most one cache line, so a lookup reads one.
+template <typename E>
+struct alignas(32) _enum_entry {
+	std::uint64_t word[2] = {0, 0};  // the name lower-cased, as above (sizes up to 16)
+	const char *data = nullptr;      // the name
+	std::uint32_t size = 0;          // its length
+	E value = E();
+};
+static_assert(sizeof(_enum_entry<std::uint32_t>) == 32, "an entry is half a cache line");
+
+// The entries by slot, and one more: the entry of a slot no member has (`phf::npos` is mapped to it).
+// It matches no input, whatever its length: its first word is eight 'A', and an input's words are
+// lower-cased, so none of their bytes is a capital.
+template <typename E, std::size_t N>
+struct _enum_table {
+	_enum_entry<E> entry[N + 1];
+};
+
+template <typename E>
+constexpr inline _enum_entry<E> _enum_no_entry() {
+	_enum_entry<E> e;
+	e.word[0] = 0x4141414141414141ULL;
+	return e;
+}
+
+template <typename E>
+constexpr inline _enum_entry<E> _enum_make_entry(E value, std::string_view name) {
+	_enum_entry<E> e;
+	e.value = value;
+	e.data = name.data();
+	e.size = static_cast<std::uint32_t>(name.size());
+	const char *p = name.data();
+	const std::size_t n = name.size();
+	if (n >= 8 && n <= 16) {
+		e.word[0] = _enum_lower(_enum_pack(p, 8));
+		e.word[1] = _enum_lower(_enum_pack(p + n - 8, 8));
+	} else if (n >= 1 && n < 8) {
+		e.word[0] = _enum_lower(_enum_pack(p, n));
+	}
+	return e;
+}
+
+// The entries by perfect-hash slot. `hashes` are the hashes of the non-empty `names`, in order,
+// which is what `phf_names` was built from.
+template <typename E, std::size_t N, std::size_t M, typename Phf>
+constexpr inline _enum_table<E, N> _enum_make_table(const E (&values)[N], const std::string_view (&names)[N], const std::uint64_t (&hashes)[M], const Phf &phf_names) {
+	_enum_table<E, N> table{};
+	table.entry[N] = _enum_no_entry<E>();
+	std::size_t member = 0;
+	for (std::size_t i = 0; i < N; ++i) {
+		if (!names[i].empty()) {
+			table.entry[phf_names.lookup(hashes[member++])] = _enum_make_entry(values[i], names[i]);
+		}
+	}
+	return table;
+}
+
+// ---- The hash of an input at run time ----
+//
+// `wordwise_ci::hash` computes the value `phf` was built from, reading the last n % 8 bytes one
+// at a time through a table. At run time the same value comes from the words above: the input
+// is lower-cased once, a word at a time, and the same words are compared with the entry. The
+// value is the same as `wordwise_ci`'s for every input whose full eight-byte words are below
+// 0xc1 in every byte, and for every name (test/names_test.cc compares the two over all sizes
+// and byte values). `wordwise_ci` lower-cases a whole word with adds that carry from a byte of
+// 0xc1 or more into the next one; this lower-cases each byte alone. An input with such a byte
+// in a full word is not a member name, so it only has to be rejected, and the comparison does.
+
+constexpr std::uint64_t _enum_hash_mul = 0x9e3779b97f4a7c15ULL;  // wordwise_ci's multiplier
+
+constexpr inline std::uint64_t _enum_hash_start(std::size_t n) {
+	return 0x100000001b3ULL ^ (static_cast<std::uint64_t>(n) * _enum_hash_mul);
+}
+
+// One word, already lower-cased, mixed in.
+constexpr inline std::uint64_t _enum_hash_step(std::uint64_t h, std::uint64_t word) {
+	h ^= word;
+	h *= _enum_hash_mul;
+	return h ^ (h >> 29);
+}
+
+// The end of the hash: the tail (the last n % 8 bytes as a lower-cased word) mixed in.
+constexpr inline std::uint64_t _enum_hash_finish(std::uint64_t h, std::uint64_t tail) {
+	h ^= tail;
+	h *= _enum_hash_mul;
+	return h ^ (h >> 32);
+}
+
+// An input of more than 16 bytes: its hash.
+_ENUM_ALWAYS_INLINE std::uint64_t _enum_hash_long(const char *p, std::size_t n) {
+	std::uint64_t h = _enum_hash_start(n);
+	std::size_t i = 0;
+	for (; i + 8 <= n; i += 8) {
+		h = _enum_hash_step(h, _enum_lower(_enum_load8(p + i)));
+	}
+	const std::size_t tail = n - i;
+	return _enum_hash_finish(h, tail ? _enum_lower(_enum_load8(p + n - 8)) >> (64 - 8 * tail) : 0);
+}
+
+// An input of at most 16 bytes: its hash and its lower-cased words to compare with an entry.
+struct _enum_probe {
+	std::uint64_t hash;
+	std::uint64_t word[2];
+};
+
+// The n bytes of a name of 1 to 3, as a lower-cased word: the bytes at 0, n / 2 and n - 1.
+// Through `chars::tolower`'s table, byte by byte, the lower-casing is loads, which the integer pipes are
+// spared; on arm64 that is faster than lower-casing the word. On x86 the word is faster.
+_ENUM_ALWAYS_INLINE std::uint64_t _enum_short_lower_table(const char *p, std::size_t n) {
+	const std::uint64_t first = _enum_byte(chars::tolower(p[0])), middle = _enum_byte(chars::tolower(p[n >> 1])), last = _enum_byte(chars::tolower(p[n - 1]));
+	return first | (middle << (8 * (n >> 1))) | (last << (8 * (n - 1)));
+}
+
+_ENUM_ALWAYS_INLINE std::uint64_t _enum_short_lower_word(const char *p, std::size_t n) {
+	const std::uint64_t first = _enum_byte(p[0]), middle = _enum_byte(p[n >> 1]), last = _enum_byte(p[n - 1]);
+	return _enum_lower(first | (middle << (8 * (n >> 1))) | (last << (8 * (n - 1))));
+}
+
+#if defined(__aarch64__) || defined(_M_ARM64)
+#define _enum_short_lower _enum_short_lower_table
+#else
+#define _enum_short_lower _enum_short_lower_word
+#endif
+
+_ENUM_ALWAYS_INLINE _enum_probe _enum_probe_input(const char *p, std::size_t n) {
+	std::uint64_t h = _enum_hash_start(n);
+	std::uint64_t word0 = 0, word1 = 0, tail = 0;
+	if (n >= 8) {
+		word0 = _enum_load8(p);
+		word1 = _enum_load8(p + n - 8);
+		_enum_lower_pair(word0, word1);
+		h = _enum_hash_step(h, word0);
+		if (n == 16) {
+			h = _enum_hash_step(h, word1);
+		} else {
+			tail = (word1 >> 1) >> (63 - 8 * (n & 7));  // the last n % 8 bytes, zero when there are none
+		}
+	} else if (n >= 4) {
+		const std::uint64_t first = _enum_load4(p), last = _enum_load4(p + n - 4);
+		tail = word0 = _enum_lower(first | (last << (8 * (n - 4))));  // the n bytes
+	} else if (n >= 1) {
+		tail = word0 = _enum_short_lower(p, n);  // the n bytes
+	}
+	return {_enum_hash_finish(h, tail), {word0, word1}};
+}
+
+// Whether `input` equals `name` up to case, eight bytes at a time (both have `n` > 8 bytes).
+_ENUM_NOINLINE bool _enum_fold_equal(const char *name, const char *input, std::size_t n) {
+	for (std::size_t i = 0; i + 8 < n; i += 8) {
+		if (!_enum_word_equal(_enum_load8(input + i), _enum_load8(name + i))) {
+			return false;
+		}
+	}
+	return _enum_word_equal(_enum_load8(input + n - 8), _enum_load8(name + n - 8));
+}
+
+// A name longer than 16 bytes, eight at a time; `name` and `input` both have `n` bytes. The
+// exact bytes are tried first, which is the common hit and costs two xors per word.
+_ENUM_ALWAYS_INLINE bool _enum_long_equal(const char *name, const char *input, std::size_t n) {
+	std::uint64_t different = _enum_load8(input + n - 8) ^ _enum_load8(name + n - 8);
+	for (std::size_t i = 0; i + 8 < n; i += 8) {
+		different |= _enum_load8(input + i) ^ _enum_load8(name + i);
+	}
+	return different == 0 || _enum_fold_equal(name, input, n);
+}
+
+// Whether an input of `n` bytes (at most 16) with this probe is the member of `e`: the same
+// length, and the same lower-cased words.
+template <typename E>
+_ENUM_ALWAYS_INLINE constexpr bool _enum_probe_equal(const _enum_entry<E> &e, const _enum_probe &probe, std::size_t n) {
+	return ((n ^ e.size) | (probe.word[0] ^ e.word[0]) | (probe.word[1] ^ e.word[1])) == 0;
+}
+
+// An input of 17 to 24 bytes: its hash, from its first eight bytes, the next eight and the last
+// eight (as loaded, not yet lower-cased).
+_ENUM_ALWAYS_INLINE std::uint64_t _enum_hash_medium(std::uint64_t first, std::uint64_t second, std::uint64_t last, std::size_t n) {
+	const std::uint64_t h = _enum_hash_step(_enum_hash_step(_enum_hash_start(n), _enum_lower(first)), _enum_lower(second));
+	if (n == 24) {
+		return _enum_hash_finish(_enum_hash_step(h, _enum_lower(last)), 0);
+	}
+	return _enum_hash_finish(h, (_enum_lower(last) >> 1) >> (63 - 8 * (n & 7)));  // the last n % 8 bytes
+}
+
+// An input of 17 to 24 bytes, inline: the same three words against the name itself, exact bytes first.
+template <typename E, std::size_t N, typename Phf>
+_ENUM_ALWAYS_INLINE std::optional<E> _enum_lookup_medium(const Phf &phf_names, const _enum_table<E, N> &table, const char *p, std::size_t n) {
+	const std::uint64_t first = _enum_load8(p), second = _enum_load8(p + 8), last = _enum_load8(p + n - 8);
+	const std::size_t slot = phf_names.lookup(_enum_hash_medium(first, second, last, n));
+	const _enum_entry<E> &e = table.entry[slot < N ? slot : N];
+	if (n != e.size) {
+		return std::nullopt;
+	}
+	if (((first ^ _enum_load8(e.data)) | (second ^ _enum_load8(e.data + 8)) | (last ^ _enum_load8(e.data + n - 8))) != 0 && !_enum_fold_equal(e.data, p, n)) {
+		return std::nullopt;
+	}
+	return e.value;
+}
+
+// An input of more than 24 bytes, out of line.
+template <typename E, std::size_t N, typename Phf>
+_ENUM_NOINLINE std::optional<E> _enum_lookup_long(const Phf &phf_names, const _enum_table<E, N> &table, std::string_view name) {
+	const std::size_t slot = phf_names.lookup(_enum_hash_long(name.data(), name.size()));
+	const _enum_entry<E> &e = table.entry[slot < N ? slot : N];
+	if (name.size() == e.size && _enum_long_equal(e.data, name.data(), name.size())) {
+		return e.value;
+	}
+	return std::nullopt;
+}
+
+// The member `name` denotes, if any. In a constant expression `wordwise_ci` gives the hash and
+// `_enum_name_equal` decides; at run time the wide loads do both.
+template <typename E, std::size_t N, typename Phf>
+_ENUM_ALWAYS_INLINE constexpr std::optional<E> _enum_lookup(const Phf &phf_names, const _enum_table<E, N> &table, std::string_view name) {
+	const std::size_t n = name.size();
+	if (std::is_constant_evaluated()) {
+		const std::size_t slot = phf_names.lookup(hhl(name));
+		if (slot < N && _enum_name_equal(name, std::string_view(table.entry[slot].data, table.entry[slot].size))) {
+			return table.entry[slot].value;
+		}
+		return std::nullopt;
+	}
+	if (n > 16) {
+		if (n <= 24) {
+			return _enum_lookup_medium(phf_names, table, name.data(), n);
+		}
+		return _enum_lookup_long(phf_names, table, name);
+	}
+	const _enum_probe probe = _enum_probe_input(name.data(), n);
+	const std::size_t slot = phf_names.lookup(probe.hash);
+	const _enum_entry<E> &e = table.entry[slot < N ? slot : N];  // no branch on whether the slot is a member's
+	if (!_enum_probe_equal(e, probe, n)) {
+		return std::nullopt;
+	}
+	return e.value;
 }
 
 template <typename Enum>
@@ -1338,6 +1664,11 @@ constexpr inline std::optional<T> enum_try_type(std::string_view);
 		constexpr const std::string_view names[] = { \
 			_ENUM_MAP(_ENUM_TO_SINGLE_ARRAY_NAME, Enum, __VA_ARGS__) \
 		}; \
+		constexpr const std::uint64_t name_hashes[] = { \
+			_ENUM_MAP(_ENUM_TO_SINGLE_PHF_NAME, Enum, __VA_ARGS__) \
+		}; \
+		inline constexpr auto name_phf = phf::make_phf(name_hashes); \
+		inline constexpr auto name_table = _enum_make_table(values, names, name_hashes, name_phf); \
 	} \
 	constexpr inline auto enum_find(Enum type) { \
 		constexpr auto _phf_values = phf::make_phf({ \
@@ -1354,21 +1685,14 @@ constexpr inline std::optional<T> enum_try_type(std::string_view);
 	} \
 	template <> \
 	constexpr inline auto enum_find<Enum>(std::string_view name) { \
-		constexpr auto _phf_names = phf::make_phf({ \
-			_ENUM_MAP(_ENUM_TO_SINGLE_PHF_NAME, Enum, __VA_ARGS__) \
-		}); \
-		return _phf_names.fhhl(name); \
+		return detail_ ## Enum::name_phf.fhhl(name); \
 	} \
 	template <> \
-	constexpr inline std::optional<Enum> enum_try_type<Enum>(std::string_view name) { \
-		switch (enum_find<Enum>(name)) { \
-			_ENUM_MAP(_ENUM_TO_SINGLE_PHF_NAMES_CASE, Enum, __VA_ARGS__) \
-			default: \
-				return std::nullopt; \
-		} \
+	_ENUM_ALWAYS_INLINE constexpr std::optional<Enum> enum_try_type<Enum>(std::string_view name) { \
+		return _enum_lookup(detail_ ## Enum::name_phf, detail_ ## Enum::name_table, name); \
 	} \
 	template <> \
-	constexpr inline Enum enum_type<Enum>(std::string_view name) { \
+	_ENUM_ALWAYS_INLINE constexpr Enum enum_type<Enum>(std::string_view name) { \
 		if (auto found = enum_try_type<Enum>(name)) { \
 			return *found; \
 		} \
