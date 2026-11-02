@@ -10,7 +10,8 @@ easy to fall into.
 ```
 enum.h                       ENUM_CLASS / ENUM macros + constexpr enum_name / enum_type / enum_find. Header.
 test/test.cc                 Runnable smoke test: enum->string, string->enum, perfect-hash dispatch, unknown name, round-trip.
-test/names_test.cc           Name lookup against a brute-force oracle: exhaustive short strings, case variants, random bytes, and strings forged to share a member's hash (CTest `enum_reflection_names`).
+test/names_test.cc           Name lookup against a brute-force oracle: exhaustive short strings, case variants, every byte value at every position, random bytes, strings forged to share a member's hash, and collisions built at will (a lookup of an input that is made to land on a chosen entry), plus the hash and the entry words (CTest `enum_reflection_names`). `names_test SECTION` runs one section: exhaustive, variants, bytes, pieces, synthetic, random, forged.
+test/mutants.py              Edits a copy of enum.h one way at a time (the length check, the lower-casing, the tail word, the hash, the verification itself) and requires the section of names_test that covers each to fail (CTest `enum_reflection_mutants`, `-DENUM_REFLECTION_MUTANTS=ON`).
 bench/bench.cc               Name lookups against an array by value, binary search, a linear scan, a sorted array and (when Abseil is found) absl::flat_hash_map; every answer is checked, near misses must be rejected (-DENUM_REFLECTION_BUILD_BENCH=ON; CTest `enum_reflection_bench_check` runs the checks with `--check`, without timing).
 bench/gen_enums.py           Writes bench/enums.h: dense enums of 8, 32 and 128 members, a sparse one of 32, and their name tables.
 bench/compile_time.cc        The accessors of those enums in one translation unit; compile_base.cc is the same without them (CMake targets enum_reflection_ct, enum_reflection_ct_base, excluded from `all`).
@@ -76,15 +77,34 @@ cmake -B build \
   both and links their targets so the headers are on the include path. If you bump
   a dep SHA, keep both the `FetchContent_Declare` and the `target_link_libraries`
   line.
-- **`enum_type` wraps `enum_try_type`.** The name switch is generated once, in
-  `enum_try_type`, whose `default` returns `std::nullopt`; `enum_type` throws
-  `std::out_of_range` on that `std::nullopt`. Keep one switch per enum.
-- **A slot is a candidate, not an answer.** Each `case` of the name switch compares the
-  input with the member's name (`_enum_name_equal`, ASCII case-insensitive) before it
-  returns the value. The 64-bit name hash is invertible, so a string that is not a member
-  can have a member's hash; without the comparison `enum_try_type` and `enum_type` accept
-  it. `test/names_test.cc` forges such strings; keep the comparison and the fold in step
-  with `wordwise_ci` (it folds `A` to `Z` only).
+- **`enum_type` wraps `enum_try_type`.** The name table is generated once per enum
+  (`detail_Enum::name_table`) and read by `enum_try_type`, which returns
+  `std::nullopt` on a miss; `enum_type` throws `std::out_of_range` on that
+  `std::nullopt`. Keep one table per enum.
+- **A slot is a candidate, not an answer.** The name lookup takes the slot the hash of the
+  input selects (`phf::lookup`, no hash equality) and compares the input with that
+  slot's entry (`_enum_probe_equal`: the lengths, then the lower-cased words;
+  `_enum_lookup_medium` for 17 to 24 bytes and `_enum_lookup_long` beyond) before it returns the value. The 64-bit
+  name hash is invertible and the perfect hash sends every input to some slot, so a
+  string that is not a member can reach a member's entry; without the comparison
+  `enum_try_type` and `enum_type` accept it. `test/names_test.cc` forges such strings and
+  builds collisions at will; keep the comparison and `_enum_lower` in step with
+  `_enum_name_equal` (it folds `A` to `Z` only), which is the definition.
+- **The table has one entry more than the enum has members.** `entry[N]` is `_enum_no_entry`, where a
+  slot that no member has is sent (`slot < N ? slot : N`, no branch: that branch is unpredictable on a miss).
+  It must match no input: its first word is eight `A`, which no lower-cased word contains.
+- **`_enum_probe_input` is `wordwise_ci::hash` for the run time.** The same value for every
+  name and every input whose full eight-byte words have no byte of `0xc1` or more
+  (`wordwise_ci` lower-cases a word with adds that carry out of such a byte; the lookup
+  lower-cases each byte alone, and an input with one is no member). `phf` was built from
+  `wordwise_ci`. If `hashes` changes `wordwise_ci`, the `pieces` section of
+  `test/names_test.cc` fails: change `_enum_probe_input`, `_enum_hash_medium` and `_enum_hash_long` with it.
+- **Three ways to lower-case, one result.** `_enum_lower` (a word, in integer arithmetic; the compile-time
+  and the 4 to 7 byte form), `_enum_lower_pair` (two words in a vector register) and `chars::tolower`
+  (a name of 1 to 3 bytes) must agree on every byte value; the `pieces` section checks it.
+- **Words are little-endian on every host.** `_enum_pack` builds them at compile time,
+  `_enum_load8` and `_enum_load4` read them at run time, and a shift that assumes a
+  byte order breaks one of the two.
 - **Both directions are independent perfect hashes.** `enum_name` keys on a hash
   of the underlying *value* (`hmix`), `enum_type` on a hash of the *name* (`hhl`,
   case-insensitive FNV-1a). Don't collapse them or assume a slot from one is valid

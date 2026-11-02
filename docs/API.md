@@ -37,9 +37,9 @@ Underlying` plus these free functions, all `constexpr`:
   same lookup without the exception: `std::nullopt` on a miss. Use it where
   misses are expected; a throw costs several hundred times a hit.
 - **`enum_find(Enum e)`** / **`enum_find<Enum>(std::string_view name)`**: the raw
-  perfect-hash slot for a value / a name. These are what `enum_name` and
-  `enum_type` switch on; rarely needed directly. A slot only says which member
-  to compare with: a name that is not a member can have a member's slot.
+  perfect-hash slot for a value / a name (`phf::npos` when no member has the hash).
+  Rarely needed directly. A slot only says which member to compare with: a name
+  that is not a member can have a member's slot.
 
 Members may carry explicit values (`Ok = 200, NotFound = 404, ...`); the value
 dispatch keys on the underlying value, not the declaration order, and a sparse,

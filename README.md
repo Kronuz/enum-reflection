@@ -8,9 +8,9 @@ Part of [Kronuz C++ Libraries](https://github.com/Kronuz/cpp-libraries), a colle
 ![Header-only](https://img.shields.io/badge/header--only-yes-green.svg)
 
 Header-only reflective enums for C++20: one macro defines an enum class and constexpr perfect-hash lookups both ways.
-`ENUM_CLASS` declares a real `enum class` and, from the same member list, a
-`switch` on a compile-time perfect hash of each value and of each name, so
-`enum_name` and `enum_type` are `constexpr` and build no table at run time.
+`ENUM_CLASS` declares a real `enum class` and, from the same member list, lookups
+on a compile-time perfect hash of each value and of each name, so `enum_name` and
+`enum_type` are `constexpr` and build no table at run time.
 Reach for it when enums appear in text: configuration, protocols, logs and
 command lines.
 
@@ -23,9 +23,10 @@ command lines.
 - **`constexpr` and allocation-free.** Lookups work in `static_assert`.
 - **Perfect-hash dispatch.** Through [constexpr-phf](https://github.com/Kronuz/constexpr-phf)
   and [hashes](https://github.com/Kronuz/hashes); a hash hit is confirmed against
-  the member's name, so a string that collides with a member's hash is rejected.
+  the member's name with a few wide loads, so a string that collides with a member's
+  hash is rejected.
 - **Misses your way.** `enum_type` throws `std::out_of_range`; `enum_try_type`
-  returns `std::nullopt` from the same `switch`.
+  returns `std::nullopt` from the same lookup.
 - **Case-insensitive names.** A name matches a member when the two are equal
   ignoring ASCII case.
 
@@ -89,9 +90,8 @@ Not for:
 
 - **Enums declared elsewhere.** The macro declares the enum; it cannot reflect an
   existing one.
-- **Very large enums.** Each name costs about 25 ms of compile time on an Apple M4
-  Pro (75 ms on the i9) in every translation unit that uses the accessors, and the
-  macros stop at 999 members.
+- **Very large enums.** Each name costs about 25 ms of compile time in every translation unit
+  that uses the accessors, and the macros stop at 999 members.
 - **Expected misses through `enum_type`.** A miss that throws costs several hundred
   times a hit; call `enum_try_type` for user input.
 - **One answer for every miss.** An unknown value gives `enum_name` an empty
@@ -116,16 +116,16 @@ rejected. Lower is faster.
 
 | lookup | comparator | M4 Pro: enum-reflection | M4 Pro: comparator | i9-9980HK: enum-reflection | i9-9980HK: comparator |
 |---|---|---:|---:|---:|---:|
-| `enum_type` hit, 32 members | `absl::flat_hash_map` | 4.8 | 4.4 | 11.5 | 11.3 |
-| `enum_type` hit, 32 members | linear scan | 4.8 | 17.6 | 11.5 | 42.5 |
-| `enum_type` hit, 32 members | `magic_enum::enum_cast` | 4.8 | 17.6 | 11.5 | 44.4 |
-| `enum_type` hit, 128 members | `absl::flat_hash_map` | 7.9 | 4.3 | 18.9 | 12.7 |
-| `enum_type` hit, 128 members | `magic_enum::enum_cast` | 7.9 | 62.9 | 18.9 | 136.7 |
-| `enum_try_type` miss, 128 members | `absl::flat_hash_map` | 3.1 | 2.1 | 8.5 | 5.3 |
-| `enum_try_type` miss, 128 members | `magic_enum::enum_cast` | 3.1 | 39.3 | 8.5 | 70.7 |
-| `enum_name`, 32 sparse members | binary search by value | 1.4 | 3.5 | 3.3 | 4.0 |
-| `enum_name`, 32 sparse members | `magic_enum::enum_name` | 1.4 | 1.2 | 3.3 | 2.7 |
-| `enum_name`, 128 dense members | `magic_enum::enum_name` | 1.5 | 0.4 | 3.7 | 1.0 |
+| `enum_type` hit, 32 members | `absl::flat_hash_map` | 3.4 | 4.8 | 7.6 | 11.2 |
+| `enum_type` hit, 32 members | linear scan | 3.4 | 17.2 | 7.6 | 43.1 |
+| `enum_type` hit, 32 members | `magic_enum::enum_cast` | 3.4 | 17.6 | 7.6 | 44.4 |
+| `enum_type` hit, 128 members | `absl::flat_hash_map` | 3.3 | 4.3 | 7.3 | 12.3 |
+| `enum_type` hit, 128 members | `magic_enum::enum_cast` | 3.3 | 62.9 | 7.3 | 136.7 |
+| `enum_try_type` miss, 128 members | `absl::flat_hash_map` | 2.8 | 2.1 | 6.3 | 5.0 |
+| `enum_try_type` miss, 128 members | `magic_enum::enum_cast` | 2.8 | 39.3 | 6.3 | 70.7 |
+| `enum_name`, 32 sparse members | binary search by value | 1.4 | 3.5 | 3.1 | 5.0 |
+| `enum_name`, 32 sparse members | `magic_enum::enum_name` | 1.4 | 1.2 | 3.1 | 2.7 |
+| `enum_name`, 128 dense members | `magic_enum::enum_name` | 1.6 | 0.4 | 3.8 | 1.0 |
 
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DENUM_REFLECTION_BUILD_BENCH=ON \
@@ -134,11 +134,11 @@ cmake --build build --target enum_reflection_bench
 build/enum_reflection_bench
 ```
 
-Up to 32 members a hit costs what the hash map's does; at 128 the map is 1.5x to 1.8x faster, and it
-answers misses 1.5x to 1.6x faster, but it allocates and is built at run time. A linear scan and
-`magic_enum::enum_cast` take 3.7x to 3.9x as long as enum-reflection at 32 members, `enum_cast` 7x to
-8x at 128, and both are about 4x faster among 8 names. `magic_enum::enum_name` reads a table indexed
-by value: it is 1.2x faster at 32 sparse members and 3.7x to 3.8x faster at 128 dense ones.
+A hit costs less than the hash map's at every size, and the map answers a miss 1.2x to 1.7x faster,
+but it allocates and is built at run time. A linear scan and `magic_enum::enum_cast` take 5.1x to
+5.8x as long as enum-reflection at 32 members, `enum_cast` 19x at 128, and both are about 3x faster
+among 8 names. `magic_enum::enum_name` reads a table indexed by value: it is 1.2x faster at 32 sparse
+members and 3.8x to 4x faster at 128 dense ones.
 [docs/perf/lookup.md](docs/perf/lookup.md) has every size, `enum_name` against an array by value,
 and the compile cost.
 
