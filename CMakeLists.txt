@@ -15,12 +15,12 @@ include(FetchContent)
 FetchContent_Declare(
   constexpr_phf
   GIT_REPOSITORY https://github.com/Kronuz/constexpr-phf.git
-  GIT_TAG        1d82461008c897ab004652d5c43e60ccfa7012cb
+  GIT_TAG        4b669b6c065e209f503e5f3ec839a0634dd13edf
 )
 FetchContent_Declare(
   hashes
   GIT_REPOSITORY https://github.com/Kronuz/hashes.git
-  GIT_TAG        e3bf5b6167775f26dd14f89f210f687b0253241b
+  GIT_TAG        03ab2d69f7e1b0af6039733e0e06cc1e0118a45e
 )
 FetchContent_MakeAvailable(constexpr_phf hashes)
 
