@@ -144,6 +144,8 @@ and the compile cost.
 
 ## 📚 Documentation
 
+- [The Names Enums Throw Away](https://kronuz.github.io/blog/enum-reflection/):
+  the Familiars post on why it exists and how it works.
 - [docs/API.md](docs/API.md): `ENUM_CLASS`, `ENUM`, and the accessors.
 - [ARCHITECTURE.md](ARCHITECTURE.md): the preprocessor map and the two perfect
   hashes.
